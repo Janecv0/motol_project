@@ -255,7 +255,12 @@ Open-loop mode for fixed chunked motion without tension correction.
 - `Show Camera Preview` checkbox
 
 ### Experiment 2 behavior
-- Runs forward and return phases per repetition
+- Runs a 4-phase asymmetric cycle per repetition:
+  - `A wind / B release` using forward-step value
+  - `A release / B wind` using return-step value
+  - `A wind / B release` using return-step value
+  - `A release / B wind` using forward-step value
+- This mirrored cycle returns to the starting position even when step counts differ
 - Logs filtered weight after every movement chunk
 - Includes blob coordinates when capture is triggered; otherwise blob columns remain blank
 - Stops immediately when line-break safety condition is confirmed

@@ -1635,6 +1635,19 @@ class WinchUI:
             return "Stopped: line_break"
         return f"Stopped: {status}"
 
+    def _calculate_progress_pct_exp2(self, rep, segment_index, segment_pulses=0, segment_total=1):
+        reps_total = max(int(self.run_params.get("reps", 1)), 1)
+        segments_per_rep = 4
+        total_segments = max(reps_total * segments_per_rep, 1)
+        rep = max(0, min(rep, reps_total - 1))
+        segment_index = max(0, min(int(segment_index), segments_per_rep - 1))
+        segment_total = max(int(segment_total), 1)
+        segment_pulses = max(0, min(int(segment_pulses), segment_total))
+
+        global_segment_index = rep * segments_per_rep + segment_index
+        fraction = (global_segment_index + (segment_pulses / segment_total)) / total_segments
+        return max(0.0, min(100.0, fraction * 100.0))
+
     def _compute_correction(self, error, tolerance, adj_step):
         if error > tolerance:
             return adj_step
@@ -2297,9 +2310,8 @@ class WinchUI:
             self.experiment_thread = None
             self.active_run_mode = None
 
-    def _move_open_loop_phase(self, rep, phase):
+    def _move_open_loop_phase(self, rep, segment_index, phase, phase_total):
         params = self.run_params
-        phase_total = params["forward_steps"] if phase == "forward" else params["return_steps"]
         pulses_left = phase_total
         chunk = max(params["move_chunk_pulses"], 1)
         pulses_moved = 0
@@ -2344,8 +2356,13 @@ class WinchUI:
                 progress=f"Experiment 2 - Repetition {rep+1}/{params['reps']} - {phase.title()}",
                 exp_a=w_a,
                 exp_b=w_b,
-                progress_pct=self._calculate_progress_pct(rep, phase, pulses_moved, phase_total),
-                phase=phase.title(),
+                progress_pct=self._calculate_progress_pct_exp2(
+                    rep=rep,
+                    segment_index=segment_index,
+                    segment_pulses=pulses_moved,
+                    segment_total=phase_total,
+                ),
+                phase=f"{phase.title()} {segment_index+1}/4",
                 rep_text=f"{rep+1} / {params['reps']}",
                 pulse_text=f"{pulses_moved} / {phase_total}",
                 correction_text="N/A",
@@ -2358,28 +2375,33 @@ class WinchUI:
             params = self.run_params
             dwell_sec = params["dwell_ms"] / 1000.0
 
+            phase_plan = [
+                ("forward", params["forward_steps"], "A wind / B release"),
+                ("return", params["return_steps"], "A release / B wind"),
+                ("forward", params["return_steps"], "A wind / B release"),
+                ("return", params["forward_steps"], "A release / B wind"),
+            ]
+
             for rep in range(params["reps"]):
                 if not self.experiment_running:
                     break
 
-                self._set_ui_state(progress=f"Experiment 2 - Repetition {rep+1}/{params['reps']} - Forward")
-                status = self._move_open_loop_phase(rep, "forward")
-                if status != "ok":
-                    self.experiment_running = False
-                    self._set_ui_state(progress=self._status_text_for_failure(status), phase="Failed")
-                    return
-                time.sleep(dwell_sec)
-
-                if not self.experiment_running:
-                    break
-
-                self._set_ui_state(progress=f"Experiment 2 - Repetition {rep+1}/{params['reps']} - Return")
-                status = self._move_open_loop_phase(rep, "return")
-                if status != "ok":
-                    self.experiment_running = False
-                    self._set_ui_state(progress=self._status_text_for_failure(status), phase="Failed")
-                    return
-                time.sleep(dwell_sec)
+                for segment_index, (phase, phase_steps, phase_label) in enumerate(phase_plan):
+                    if not self.experiment_running:
+                        break
+                    self._set_ui_state(
+                        progress=(
+                            f"Experiment 2 - Repetition {rep+1}/{params['reps']} - "
+                            f"{phase_label} ({phase_steps} pulses)"
+                        )
+                    )
+                    status = self._move_open_loop_phase(rep, segment_index, phase, phase_steps)
+                    if status != "ok":
+                        self.experiment_running = False
+                        self._set_ui_state(progress=self._status_text_for_failure(status), phase="Failed")
+                        return
+                    if segment_index < len(phase_plan) - 1:
+                        time.sleep(dwell_sec)
 
             self.experiment_running = False
             self._set_ui_state(
