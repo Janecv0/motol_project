@@ -463,6 +463,8 @@ class WinchUI:
             "exp2_reps": "5",
             "exp2_capture_pulses": "5",
             "exp2_move_chunk_pulses": "2",
+            "exp2_side_scale_a": "1.0",
+            "exp2_side_scale_b": "1.0",
             "exp2_measurement_delay_ms": "200",
             "exp2_measurement_samples": "7",
             "exp2_sample_interval_ms": "20",
@@ -591,6 +593,10 @@ class WinchUI:
             settings["exp2_capture_pulses"] = self.entry_capture_pulses_exp2.get()
         if hasattr(self, "entry_move_chunk_exp2"):
             settings["exp2_move_chunk_pulses"] = self.entry_move_chunk_exp2.get()
+        if hasattr(self, "entry_side_scale_a_exp2"):
+            settings["exp2_side_scale_a"] = self.entry_side_scale_a_exp2.get()
+        if hasattr(self, "entry_side_scale_b_exp2"):
+            settings["exp2_side_scale_b"] = self.entry_side_scale_b_exp2.get()
         if hasattr(self, "entry_measurement_delay_exp2"):
             settings["exp2_measurement_delay_ms"] = self.entry_measurement_delay_exp2.get()
         if hasattr(self, "entry_measurement_samples_exp2"):
@@ -696,6 +702,10 @@ class WinchUI:
                 self._set_entry_value(self.entry_capture_pulses_exp2, settings["exp2_capture_pulses"])
             if hasattr(self, "entry_move_chunk_exp2"):
                 self._set_entry_value(self.entry_move_chunk_exp2, settings["exp2_move_chunk_pulses"])
+            if hasattr(self, "entry_side_scale_a_exp2"):
+                self._set_entry_value(self.entry_side_scale_a_exp2, settings["exp2_side_scale_a"])
+            if hasattr(self, "entry_side_scale_b_exp2"):
+                self._set_entry_value(self.entry_side_scale_b_exp2, settings["exp2_side_scale_b"])
             if hasattr(self, "entry_measurement_delay_exp2"):
                 self._set_entry_value(self.entry_measurement_delay_exp2, settings["exp2_measurement_delay_ms"])
             if hasattr(self, "entry_measurement_samples_exp2"):
@@ -770,6 +780,8 @@ class WinchUI:
             self.entry_reps_exp2,
             self.entry_capture_pulses_exp2,
             self.entry_move_chunk_exp2,
+            self.entry_side_scale_a_exp2,
+            self.entry_side_scale_b_exp2,
             self.entry_measurement_delay_exp2,
             self.entry_measurement_samples_exp2,
             self.entry_sample_interval_exp2,
@@ -1313,6 +1325,16 @@ class WinchUI:
         self.entry_capture_pulses_exp2.grid(row=2, column=1, sticky="w", padx=5)
         self.entry_capture_pulses_exp2.insert(0, "5")
 
+        ttk.Label(setup_frame, text="Motor A Move Scale:").grid(row=3, column=0, sticky="w", pady=5, padx=10)
+        self.entry_side_scale_a_exp2 = ttk.Entry(setup_frame, width=10)
+        self.entry_side_scale_a_exp2.grid(row=3, column=1, sticky="w", padx=5)
+        self.entry_side_scale_a_exp2.insert(0, "1.0")
+
+        ttk.Label(setup_frame, text="Motor B Move Scale:").grid(row=3, column=2, sticky="w", pady=5, padx=10)
+        self.entry_side_scale_b_exp2 = ttk.Entry(setup_frame, width=10)
+        self.entry_side_scale_b_exp2.grid(row=3, column=3, sticky="w", padx=5)
+        self.entry_side_scale_b_exp2.insert(0, "1.0")
+
         control_frame = ttk.LabelFrame(frame, text="Sampling and Safety", padding=10)
         control_frame.grid(row=1, column=0, sticky="nsew", pady=0, padx=(0, 5))
 
@@ -1624,6 +1646,14 @@ class WinchUI:
             return "Stopped: line_break"
         return f"Stopped: {status}"
 
+    def _compute_exp2_phase_targets(self, params):
+        base_amp = max(int(params["move_amp"]), 0)
+        scale_a = float(params.get("side_scale_a", 1.0))
+        scale_b = float(params.get("side_scale_b", 1.0))
+        target_a = max(1, int(round(base_amp * scale_a))) if base_amp > 0 else 0
+        target_b = max(1, int(round(base_amp * scale_b))) if base_amp > 0 else 0
+        return target_a, target_b
+
     def _compute_correction(self, error, tolerance, adj_step):
         if error > tolerance:
             return adj_step
@@ -1891,6 +1921,8 @@ class WinchUI:
             "reps": int(self.entry_reps_exp2.get()),
             "capture_pulses": int(self.entry_capture_pulses_exp2.get()),
             "move_chunk_pulses": int(self.entry_move_chunk_exp2.get()),
+            "side_scale_a": float(self.entry_side_scale_a_exp2.get()),
+            "side_scale_b": float(self.entry_side_scale_b_exp2.get()),
             "measurement_delay_ms": int(self.entry_measurement_delay_exp2.get()),
             "measurement_samples": int(self.entry_measurement_samples_exp2.get()),
             "sample_interval_ms": int(self.entry_sample_interval_exp2.get()),
@@ -1946,6 +1978,10 @@ class WinchUI:
             return "Dwell time must be >= 0"
         if params["move_chunk_pulses"] <= 0:
             return "Motor step chunk must be > 0"
+        if (not math.isfinite(params["side_scale_a"])) or params["side_scale_a"] <= 0:
+            return "Motor A Move Scale must be a finite value > 0"
+        if (not math.isfinite(params["side_scale_b"])) or params["side_scale_b"] <= 0:
+            return "Motor B Move Scale must be a finite value > 0"
         if params["measurement_delay_ms"] < 0:
             return "Measurement delay must be >= 0"
         if params["measurement_samples"] <= 0:
@@ -2113,12 +2149,14 @@ class WinchUI:
         self.experiment_running = True
         self.shutdown_requested = False
         capture_state = "On" if self.capture_enabled_runtime else "Off"
+        target_a, target_b = self._compute_exp2_phase_targets(params)
+        phase_total = max(target_a, target_b)
         self._set_ui_state(
             progress="Initializing Experiment 2...",
             progress_pct=0.0,
             phase="Init",
             rep_text=f"0 / {params['reps']}",
-            pulse_text=f"0 / {params['move_amp']}",
+            pulse_text=f"0 / {phase_total}",
             correction_text="N/A",
             capture_text=capture_state,
         )
@@ -2287,16 +2325,39 @@ class WinchUI:
 
     def _move_open_loop_phase(self, rep, phase):
         params = self.run_params
-        pulses_left = params["move_amp"]
+        target_a, target_b = self._compute_exp2_phase_targets(params)
+        pulses_left_a = target_a
+        pulses_left_b = target_b
         chunk = max(params["move_chunk_pulses"], 1)
-        pulses_moved = 0
+        pulses_moved_a = 0
+        pulses_moved_b = 0
+        phase_total = max(target_a, target_b)
 
-        while pulses_left > 0 and self.experiment_running:
-            step_pulses = min(chunk, pulses_left)
+        while (pulses_left_a > 0 or pulses_left_b > 0) and self.experiment_running:
+            step_pulses_a = min(chunk, pulses_left_a) if pulses_left_a > 0 else 0
+            step_pulses_b = min(chunk, pulses_left_b) if pulses_left_b > 0 else 0
             self._set_motion_state(True)
-            self._move_pair_for_phase(step_pulses, phase)
-            pulses_moved += step_pulses
-            pulses_left -= step_pulses
+            if phase == "forward":
+                self._move_motors_interleaved(
+                    pulses_a=step_pulses_a,
+                    unwind_a=False,
+                    pulses_b=step_pulses_b,
+                    unwind_b=False,
+                    should_stop=self._should_abort_motion,
+                )
+            else:
+                self._move_motors_interleaved(
+                    pulses_a=step_pulses_a,
+                    unwind_a=True,
+                    pulses_b=step_pulses_b,
+                    unwind_b=True,
+                    should_stop=self._should_abort_motion,
+                )
+            pulses_moved_a += step_pulses_a
+            pulses_moved_b += step_pulses_b
+            pulses_left_a -= step_pulses_a
+            pulses_left_b -= step_pulses_b
+            phase_pulses_moved = max(pulses_moved_a, pulses_moved_b)
 
             measurement = self._collect_settled_samples()
             if not measurement:
@@ -2311,13 +2372,17 @@ class WinchUI:
 
             capture_ok = False
             centers = []
-            if self.capture_enabled_runtime and pulses_moved % params["capture_pulses"] == 0:
+            if (
+                self.capture_enabled_runtime
+                and phase_pulses_moved > 0
+                and phase_pulses_moved % params["capture_pulses"] == 0
+            ):
                 capture_ok, centers = self._capture_and_log_blobs()
 
             self._log_experiment_data_row(
                 rep=rep,
                 phase=phase,
-                pulses_moved=pulses_moved,
+                pulses_moved=phase_pulses_moved,
                 w_a=w_a,
                 w_b=w_b,
                 centers=centers if capture_ok else [],
@@ -2327,10 +2392,10 @@ class WinchUI:
                 progress=f"Experiment 2 - Repetition {rep+1}/{params['reps']} - {phase.title()}",
                 exp_a=w_a,
                 exp_b=w_b,
-                progress_pct=self._calculate_progress_pct(rep, phase, pulses_moved, params["move_amp"]),
+                progress_pct=self._calculate_progress_pct(rep, phase, phase_pulses_moved, phase_total),
                 phase=phase.title(),
                 rep_text=f"{rep+1} / {params['reps']}",
-                pulse_text=f"{pulses_moved} / {params['move_amp']}",
+                pulse_text=f"{phase_pulses_moved} / {phase_total}",
                 correction_text="N/A",
             )
 

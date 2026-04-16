@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .DS_Store
 jak_se_tam_prihlasit.txt
+finger_spotter.py
+scale_test.py
