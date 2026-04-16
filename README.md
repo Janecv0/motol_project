@@ -238,10 +238,9 @@ Each control step follows:
 Open-loop mode for fixed chunked motion without tension correction.
 
 ### Experiment 2 parameters
-- `Movement Amplitude (pulses)`
+- `Steps A wind / B release`
+- `Steps A release / B wind`
 - `Motor Step Chunk (pulses)`
-- `Motor A Move Scale`
-- `Motor B Move Scale`
 - `Dwell Time (ms)`
 - `Repetitions`
 - `Image Capture Every (pulses)`
