@@ -10,12 +10,19 @@ The project combines:
 - experiment logging to CSV
 
 ## Repository Contents
-- `test.py`: Main GUI app (calibration, motor control, experiment control, logging)
+- `app.py`: Main GUI app entrypoint (calibration, motor control, experiment control, logging)
+- `test.py`: Compatibility wrapper for the main GUI app
+- `app_ui.py`: Tk UI shell and experiment flow orchestration
+- `core.py`: Shared constants, validation, progress, and motion math
+- `experiment_common.py`: Shared line-break helpers for both experiments
+- `experiment1.py`: Experiment 1 control-loop orchestration
+- `experiment2.py`: Experiment 2 open-loop orchestration
+- `hardware.py`: HX711 and motor adapters
+- `vision.py`: Blob detection helpers
 - `scale_test.py`: Lightweight CLI test for HX711 channels A/B
 - `finger_spotter.py`: Separate finger marker tracking/angle logging tool
-- `jak_se_tam_prihlasit.txt`: local helper notes for SSH/SCP
 
-## Main Features (`test.py`)
+## Main Features (`app.py`)
 - Live scale readings for two sides of the seesaw
 - Independent Scale A / Scale B calibration with persistence
 - Manual motor jog controls + quick step buttons
@@ -83,8 +90,10 @@ pip3 install opencv-python
 ## Run the Main App
 From the project directory:
 ```bash
-python3 test.py
+python3 app.py
 ```
+
+`python3 test.py` still works as a wrapper, but `app.py` is the preferred entrypoint.
 
 On app close, GPIO and camera resources are released cleanly.
 
